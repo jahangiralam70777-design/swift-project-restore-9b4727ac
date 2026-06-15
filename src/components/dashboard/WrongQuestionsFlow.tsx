@@ -386,16 +386,38 @@ export function WrongQuestionsFlow() {
   async function finishReview() {
     if (!reviewItems || reviewItems.length === 0) return;
     setReviewBusy(true);
+    const mcqIds = reviewItems.map((r) => r.mcq!.id);
+    const idSet = new Set(mcqIds);
+    // Snapshot caches for rollback
+    const prevWrong = qc.getQueriesData({ queryKey: ["mcq-wrong"] });
+    const prevAll = qc.getQueriesData({ queryKey: ["mcq-wrong-all"] });
     try {
-      const mcqIds = reviewItems.map((r) => r.mcq!.id);
-      await removeFn({ data: { mcqIds } });
-      invalidateAll();
-    } catch {
-      /* silent */
-    } finally {
-      setReviewBusy(false);
+      // Await DB deletion BEFORE updating UI to prevent mismatch
+      const res = await removeFn({ data: { mcqIds } });
+      if (!res || typeof res.removed !== "number") {
+        throw new Error("Delete did not confirm");
+      }
+      // Optimistically prune caches for instant count update
+      const prune = <T extends { mcq_id: string }>(rows: T[] | undefined) =>
+        (rows ?? []).filter((r) => !idSet.has(r.mcq_id));
+      qc.setQueriesData({ queryKey: ["mcq-wrong"] }, prune);
+      qc.setQueriesData({ queryKey: ["mcq-wrong-all"] }, prune);
+      // Refetch to reconcile with server truth
+      await Promise.all([
+        qc.refetchQueries({ queryKey: ["mcq-wrong"] }),
+        qc.refetchQueries({ queryKey: ["mcq-wrong-all"] }),
+        qc.refetchQueries({ queryKey: ["mcq-review-counts"] }),
+      ]);
       setReviewItems(null);
       setReviewIdx(0);
+      toast.success(`Removed ${res.removed} reviewed question${res.removed === 1 ? "" : "s"}`);
+    } catch (err) {
+      // Rollback cache snapshots
+      prevWrong.forEach(([key, data]) => qc.setQueryData(key, data));
+      prevAll.forEach(([key, data]) => qc.setQueryData(key, data));
+      toast.error(err instanceof Error ? err.message : "Failed to remove reviewed questions");
+    } finally {
+      setReviewBusy(false);
     }
   }
   function cancelReview() {
