@@ -373,25 +373,32 @@ export function WrongQuestionsFlow() {
   function startReview(ids: string[]) {
     const unique = Array.from(new Set(ids)).filter(Boolean);
     if (unique.length === 0) return;
-    setReviewIds(unique);
+    // Resolve full payloads from already-loaded lists so the modal is self-contained.
+    const pool = new Map<string, WrongItem>();
+    for (const it of allItems) if (it.mcq) pool.set(it.mcq.id, it);
+    for (const it of items) if (it.mcq) pool.set(it.mcq.id, it);
+    const resolved = unique.map((id) => pool.get(id)).filter((x): x is WrongItem => !!x && !!x.mcq);
+    if (resolved.length === 0) return;
+    setReviewItems(resolved);
     setReviewIdx(0);
   }
   async function finishReview() {
-    if (!reviewIds || reviewIds.length === 0) return;
+    if (!reviewItems || reviewItems.length === 0) return;
     setReviewBusy(true);
     try {
-      await removeFn({ data: { mcqIds: reviewIds } });
+      const mcqIds = reviewItems.map((r) => r.mcq!.id);
+      await removeFn({ data: { mcqIds } });
       invalidateAll();
     } catch {
       /* silent */
     } finally {
       setReviewBusy(false);
-      setReviewIds(null);
+      setReviewItems(null);
       setReviewIdx(0);
     }
   }
   function cancelReview() {
-    setReviewIds(null);
+    setReviewItems(null);
     setReviewIdx(0);
   }
 
