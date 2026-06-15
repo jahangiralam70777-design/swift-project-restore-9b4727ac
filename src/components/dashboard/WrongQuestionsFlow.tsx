@@ -215,7 +215,8 @@ export function WrongQuestionsFlow() {
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [visible, setVisible] = useState(5);
-  const [reviewIds, setReviewIds] = useState<string[] | null>(null);
+  type WrongItem = NonNullable<Awaited<ReturnType<typeof listFn>>>[number];
+  const [reviewItems, setReviewItems] = useState<WrongItem[] | null>(null);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [reviewBusy, setReviewBusy] = useState(false);
   const navigate = useNavigate();
@@ -372,25 +373,32 @@ export function WrongQuestionsFlow() {
   function startReview(ids: string[]) {
     const unique = Array.from(new Set(ids)).filter(Boolean);
     if (unique.length === 0) return;
-    setReviewIds(unique);
+    // Resolve full payloads from already-loaded lists so the modal is self-contained.
+    const pool = new Map<string, WrongItem>();
+    for (const it of allItems) if (it.mcq) pool.set(it.mcq.id, it);
+    for (const it of items) if (it.mcq) pool.set(it.mcq.id, it);
+    const resolved = unique.map((id) => pool.get(id)).filter((x): x is WrongItem => !!x && !!x.mcq);
+    if (resolved.length === 0) return;
+    setReviewItems(resolved);
     setReviewIdx(0);
   }
   async function finishReview() {
-    if (!reviewIds || reviewIds.length === 0) return;
+    if (!reviewItems || reviewItems.length === 0) return;
     setReviewBusy(true);
     try {
-      await removeFn({ data: { mcqIds: reviewIds } });
+      const mcqIds = reviewItems.map((r) => r.mcq!.id);
+      await removeFn({ data: { mcqIds } });
       invalidateAll();
     } catch {
       /* silent */
     } finally {
       setReviewBusy(false);
-      setReviewIds(null);
+      setReviewItems(null);
       setReviewIdx(0);
     }
   }
   function cancelReview() {
-    setReviewIds(null);
+    setReviewItems(null);
     setReviewIdx(0);
   }
 
@@ -852,12 +860,12 @@ export function WrongQuestionsFlow() {
         </aside>
       </div>
 
-      {reviewIds && reviewIds.length > 0 && (() => {
-        const cur = allItems.find((it) => it.mcq?.id === reviewIds[reviewIdx]);
+      {reviewItems && reviewItems.length > 0 && (() => {
+        const cur = reviewItems[Math.min(reviewIdx, reviewItems.length - 1)];
         const m = cur?.mcq;
         const correct = cur?.correct_option ?? m?.correct_option ?? null;
         const picked = cur?.last_chosen_option ?? null;
-        const total = reviewIds.length;
+        const total = reviewItems.length;
         const isLast = reviewIdx >= total - 1;
         return (
           <div
