@@ -860,12 +860,12 @@ export function WrongQuestionsFlow() {
         </aside>
       </div>
 
-      {reviewIds && reviewIds.length > 0 && (() => {
-        const cur = allItems.find((it) => it.mcq?.id === reviewIds[reviewIdx]);
+      {reviewItems && reviewItems.length > 0 && (() => {
+        const cur = reviewItems[Math.min(reviewIdx, reviewItems.length - 1)];
         const m = cur?.mcq;
         const correct = cur?.correct_option ?? m?.correct_option ?? null;
         const picked = cur?.last_chosen_option ?? null;
-        const total = reviewIds.length;
+        const total = reviewItems.length;
         const isLast = reviewIdx >= total - 1;
         return (
           <div
